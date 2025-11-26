@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stone Stories - Interactive 3D Experience</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #video {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            height: 150px;
+            border: 2px solid #fff;
+            border-radius: 10px;
+            z-index: 10;
+            display: none;
+        }
+
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 30px;
+            border-radius: 15px;
+            z-index: 100;
+            max-width: 80%;
+        }
+
+        #timer {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            z-index: 10;
+            display: none;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+        }
+
+        #hint {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 18px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px 30px;
+            border-radius: 10px;
+            z-index: 10;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+            z-index: 200;
+        }
+
+        .fade-out {
+            animation: fadeOut 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeOut {
+            to {
+                opacity: 0;
+                pointer-events: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <video id="video" autoplay playsinline></video>
+    <div id="instructions">
+        <h2>Welcome to Stone Stories</h2>
+        <p>Loading camera... Please allow camera access</p>
+        <p style="font-size: 16px; margin-top: 20px;">Use your hands to interact with the stones</p>
+    </div>
+    <div id="timer"></div>
+    <div id="hint"></div>
+    <div class="loading" id="loading">Initializing...</div>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+    <script>
+        // Game State
+        const GameState = {
+            BEACH: 'beach',
+            STORY: 'story'
+        };
+
+        let currentState = GameState.BEACH;
+        let scene, camera, renderer;
+        let stones = [];
+        let selectedStone = null;
+        let particles = null;
+        let handData = { left: null, right: null };
+        let expansionTimer = 0;
+        let isExpanding = false;
+        let targetExpansionTime = 5.0;
+
+        // Stone colors
+        const stoneColors = [
+            0xff6b6b, // red
+            0x4ecdc4, // turquoise
+            0xffe66d, // yellow
+            0xa8e6cf, // mint
+            0xff8b94, // pink
+            0xc7ceea, // lavender
+            0xffd93d, // gold
+            0x95e1d3, // seafoam
+            0xf38181, // coral
+            0xaa96da  // purple
+        ];
+
+        // Initialize Three.js
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x87ceeb, 10, 50);
+
+            camera = new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 5, 15);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfff5e6, 0.8);
+            sunLight.position.set(10, 20, 10);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            scene.add(sunLight);
+
+            const hemisphereLight = new THREE.HemisphereLight(0x87ceeb, 0xc2b280, 0.5);
+            scene.add(hemisphereLight);
+
+            createBeach();
+            createStones();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function createBeach() {
+            // Sand
+            const sandGeometry = new THREE.PlaneGeometry(100, 100);
+            const sandTexture = createSandTexture();
+            const sandMaterial = new THREE.MeshStandardMaterial({
+                map: sandTexture,
+                roughness: 0.9,
+                metalness: 0.1
+            });
+            const sand = new THREE.Mesh(sandGeometry, sandMaterial);
+            sand.rotation.x = -Math.PI / 2;
+            sand.receiveShadow = true;
+            scene.add(sand);
+
+            // Ocean
+            const oceanGeometry = new THREE.PlaneGeometry(100, 50);
+            const oceanMaterial = new THREE.MeshStandardMaterial({
+                color: 0x006994,
+                roughness: 0.3,
+                metalness: 0.3
+            });
+            const ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
+            ocean.rotation.x = -Math.PI / 2;
+            ocean.position.z = -30;
+            ocean.position.y = -0.1;
+            scene.add(ocean);
+
+            // Sky
+            scene.background = new THREE.Color(0x87ceeb);
+        }
+
+        function createSandTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#c2b280';
+            ctx.fillRect(0, 0, 512, 512);
+
+            for (let i = 0; i < 5000; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const shade = Math.random() * 40 - 20;
+                ctx.fillStyle = `rgb(${194 + shade}, ${178 + shade}, ${128 + shade})`;
+                ctx.fillRect(x, y, 2, 2);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(10, 10);
+            return texture;
+        }
+
+        function createStones() {
+            const positions = [
+                [-6, 0, 2], [-3, 0, 1], [0, 0, 0], [3, 0, 1], [6, 0, 2],
+                [-5, 0, 5], [-1.5, 0, 6], [2, 0, 5.5], [5, 0, 6], [0, 0, 8]
+            ];
+
+            positions.forEach((pos, index) => {
+                const geometry = new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.3, 0);
+                const material = new THREE.MeshStandardMaterial({
+                    color: stoneColors[index],
+                    roughness: 0.7,
+                    metalness: 0.2,
+                    emissive: stoneColors[index],
+                    emissiveIntensity: 0
+                });
+
+                const stone = new THREE.Mesh(geometry, material);
+                stone.position.set(pos[0], pos[1] + 0.5, pos[2]);
+                stone.castShadow = true;
+                stone.receiveShadow = true;
+                stone.userData.color = stoneColors[index];
+                stone.userData.index = index;
+                stone.userData.originalY = stone.position.y;
+
+                scene.add(stone);
+                stones.push(stone);
+            });
+        }
+
+        function createParticleSystem(color) {
+            const particleCount = 3000;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            const sizes = new Float32Array(particleCount);
+
+            const colorObj = new THREE.Color(color);
+
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+
+                // Initial sphere distribution
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const radius = 2 + Math.random() * 2;
+
+                positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+                positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+                positions[i3 + 2] = radius * Math.cos(phi);
+
+                colors[i3] = colorObj.r + Math.random() * 0.2 - 0.1;
+                colors[i3 + 1] = colorObj.g + Math.random() * 0.2 - 0.1;
+                colors[i3 + 2] = colorObj.b + Math.random() * 0.2 - 0.1;
+
+                sizes[i] = Math.random() * 0.1 + 0.05;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.15,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            particles = new THREE.Points(geometry, material);
+            particles.userData.basePositions = positions.slice();
+            particles.userData.scale = 1.0;
+            scene.add(particles);
+        }
+
+        function updateParticles(expansionAmount) {
+            if (!particles) return;
+
+            const positions = particles.geometry.attributes.position.array;
+            const basePositions = particles.userData.basePositions;
+            const scale = 1.0 + expansionAmount * 4; // Scale from 1 to 5
+
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i] = basePositions[i] * scale;
+                positions[i + 1] = basePositions[i + 1] * scale;
+                positions[i + 2] = basePositions[i + 2] * scale;
+            }
+
+            particles.geometry.attributes.position.needsUpdate = true;
+            particles.userData.scale = scale;
+
+            // Rotation
+            particles.rotation.y += 0.002;
+        }
+
+        function selectStone(stone) {
+            selectedStone = stone;
+
+            // Darken background
+            scene.fog.color.setHex(0x1a1a2e);
+            scene.background.setHex(0x1a1a2e);
+
+            // Glow effect
+            stone.material.emissiveIntensity = 0.5;
+
+            // Hide other stones
+            stones.forEach(s => {
+                if (s !== stone) {
+                    s.visible = false;
+                }
+            });
+
+            // Transition to story mode
+            setTimeout(() => {
+                currentState = GameState.STORY;
+                stone.visible = false;
+                createParticleSystem(stone.userData.color);
+                document.getElementById('hint').textContent = 'Spread your hands apart and hold for 5 seconds';
+                document.getElementById('hint').style.display = 'block';
+                document.getElementById('timer').style.display = 'block';
+            }, 1000);
+        }
+
+        function returnToBeach() {
+            currentState = GameState.BEACH;
+            expansionTimer = 0;
+            isExpanding = false;
+
+            // Remove particles
+            if (particles) {
+                scene.remove(particles);
+                particles.geometry.dispose();
+                particles.material.dispose();
+                particles = null;
+            }
+
+            // Restore scene
+            scene.fog.color.setHex(0x87ceeb);
+            scene.background.setHex(0x87ceeb);
+
+            // Show all stones
+            stones.forEach(stone => {
+                stone.visible = true;
+                stone.material.emissiveIntensity = 0;
+            });
+
+            selectedStone = null;
+            document.getElementById('hint').textContent = 'Pinch a stone with your fingers to select it';
+            document.getElementById('timer').style.display = 'none';
+        }
+
+        // Hand tracking
+        function initHandTracking() {
+            const videoElement = document.getElementById('video');
+
+            const hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
+
+            hands.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7
+            });
+
+            hands.onResults(onHandResults);
+
+            const cameraInstance = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 640,
+                height: 480
+            });
+
+            cameraInstance.start();
+
+            setTimeout(() => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('instructions').classList.add('fade-out');
+                setTimeout(() => {
+                    document.getElementById('instructions').style.display = 'none';
+                    document.getElementById('hint').textContent = 'Pinch a stone with your fingers to select it';
+                    document.getElementById('hint').style.display = 'block';
+                }, 500);
+            }, 2000);
+        }
+
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandedness) {
+                handData = { left: null, right: null };
+
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    const handedness = results.multiHandedness[i].label;
+
+                    const hand = {
+                        landmarks: landmarks,
+                        pinching: calculatePinching(landmarks),
+                        position: landmarks[9] // Middle finger base
+                    };
+
+                    if (handedness === 'Left') {
+                        handData.left = hand;
+                    } else {
+                        handData.right = hand;
+                    }
+                }
+
+                processHandInput();
+            }
+        }
+
+        function calculatePinching(landmarks) {
+            const thumb = landmarks[4];
+            const index = landmarks[8];
+            const distance = Math.sqrt(
+                Math.pow(thumb.x - index.x, 2) +
+                Math.pow(thumb.y - index.y, 2) +
+                Math.pow(thumb.z - index.z, 2)
+            );
+            return distance < 0.05;
+        }
+
+        function calculateHandDistance() {
+            if (!handData.left || !handData.right) return 0;
+
+            const left = handData.left.position;
+            const right = handData.right.position;
+
+            const distance = Math.sqrt(
+                Math.pow(left.x - right.x, 2) +
+                Math.pow(left.y - right.y, 2)
+            );
+
+            return distance;
+        }
+
+        function processHandInput() {
+            if (currentState === GameState.BEACH) {
+                // Check for pinch to select stone
+                if (handData.left && handData.left.pinching && !selectedStone) {
+                    const handPos = handData.left.position;
+                    const handX = (handPos.x - 0.5) * 30;
+                    const handZ = (handPos.y - 0.5) * -20 + 5;
+
+                    stones.forEach(stone => {
+                        const distance = Math.sqrt(
+                            Math.pow(stone.position.x - handX, 2) +
+                            Math.pow(stone.position.z - handZ, 2)
+                        );
+
+                        if (distance < 2) {
+                            selectStone(stone);
+                        }
+                    });
+                }
+
+                // Hover effect
+                if (handData.left && !selectedStone) {
+                    const handPos = handData.left.position;
+                    const handX = (handPos.x - 0.5) * 30;
+                    const handZ = (handPos.y - 0.5) * -20 + 5;
+
+                    stones.forEach(stone => {
+                        const distance = Math.sqrt(
+                            Math.pow(stone.position.x - handX, 2) +
+                            Math.pow(stone.position.z - handZ, 2)
+                        );
+
+                        if (distance < 2) {
+                            stone.material.emissiveIntensity = 0.3;
+                            stone.position.y = stone.userData.originalY + Math.sin(Date.now() * 0.003) * 0.1;
+                        } else {
+                            stone.material.emissiveIntensity = 0;
+                            stone.position.y = stone.userData.originalY;
+                        }
+                    });
+                }
+            } else if (currentState === GameState.STORY) {
+                // Check hand distance for expansion
+                const distance = calculateHandDistance();
+                const isHandsOpen = distance > 0.3;
+
+                if (isHandsOpen && !isExpanding) {
+                    isExpanding = true;
+                }
+
+                if (!isHandsOpen && isExpanding) {
+                    isExpanding = false;
+                    expansionTimer = 0;
+                }
+
+                if (isExpanding) {
+                    expansionTimer += 1/60; // Assuming 60 FPS
+
+                    if (expansionTimer >= targetExpansionTime) {
+                        returnToBeach();
+                        return;
+                    }
+
+                    document.getElementById('timer').textContent =
+                        `${(targetExpansionTime - expansionTimer).toFixed(1)}s`;
+                } else {
+                    expansionTimer = Math.max(0, expansionTimer - 1/60);
+                    document.getElementById('timer').textContent =
+                        `${(targetExpansionTime - expansionTimer).toFixed(1)}s`;
+                }
+
+                // Update particles based on hand distance
+                const expansionAmount = Math.min(distance / 0.5, 1.0);
+                updateParticles(expansionAmount);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Animate stones when not selected
+            if (currentState === GameState.BEACH) {
+                stones.forEach((stone, index) => {
+                    if (!selectedStone) {
+                        stone.rotation.y += 0.002;
+                        stone.rotation.x = Math.sin(Date.now() * 0.001 + index) * 0.1;
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            initThree();
+            initHandTracking();
+            animate();
+        });
+    </script>
+</body>
+</html>
