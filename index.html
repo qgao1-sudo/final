@@ -323,8 +323,8 @@
                     // First stone uses the heart texture image
                     const heartTexture = textureLoader.load('爱心石头1.png');
 
-                    // Create a plane geometry for the image
-                    const geometry = new THREE.PlaneGeometry(1.2, 1.2);
+                    // Create a plane geometry for the image (larger size)
+                    const geometry = new THREE.PlaneGeometry(2.0, 2.0);
                     const material = new THREE.MeshStandardMaterial({
                         map: heartTexture,
                         transparent: true,
@@ -340,8 +340,8 @@
                     stone = new THREE.Mesh(geometry, material);
                     stone.rotation.x = -Math.PI / 2; // Lay flat on ground
                 } else {
-                    // Other stones use geometric shapes
-                    const geometry = new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.3, 0);
+                    // Other stones use geometric shapes (larger size)
+                    const geometry = new THREE.DodecahedronGeometry(0.8 + Math.random() * 0.4, 0);
                     const material = new THREE.MeshStandardMaterial({
                         color: stoneColors[index],
                         roughness: 0.7,
@@ -353,7 +353,7 @@
                     stone = new THREE.Mesh(geometry, material);
                 }
 
-                stone.position.set(pos[0], pos[1] + 0.5, pos[2]);
+                stone.position.set(pos[0], 0.1, pos[2]); // Lower to ground level
                 stone.castShadow = true;
                 stone.receiveShadow = true;
                 stone.userData.color = stoneColors[index];
@@ -726,15 +726,7 @@
             // Process mouse input
             processMouseInput();
 
-            // Animate stones when not selected
-            if (currentState === GameState.BEACH) {
-                stones.forEach((stone, index) => {
-                    if (!selectedStone) {
-                        stone.rotation.y += 0.002;
-                        stone.rotation.x = Math.sin(Date.now() * 0.001 + index) * 0.1;
-                    }
-                });
-            }
+            // Stones remain static (no rotation)
 
             renderer.render(scene, camera);
         }
