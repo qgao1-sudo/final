@@ -99,6 +99,40 @@
                 pointer-events: none;
             }
         }
+
+        #wedding-video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1000;
+            background: black;
+            display: none;
+        }
+
+        #wedding-video video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        #close-video {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 1001;
+        }
+
+        #close-video:hover {
+            background: rgba(255, 255, 255, 1);
+        }
     </style>
 </head>
 <body>
@@ -110,6 +144,15 @@
     <div id="timer"></div>
     <div id="hint"></div>
     <div class="loading" id="loading">Loading...</div>
+
+    <!-- Wedding Video Player -->
+    <div id="wedding-video">
+        <button id="close-video">Close ✕</button>
+        <video id="video-player" controls autoplay>
+            <source src="结婚1.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
 
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -468,10 +511,18 @@
                         setTimeout(() => {
                             currentState = GameState.STORY;
                             stone.visible = false;
-                            createParticleSystem(stone.userData.color);
-                            document.getElementById('hint').textContent = 'Hold mouse button and keep for 5 seconds';
-                            document.getElementById('hint').style.display = 'block';
-                            document.getElementById('timer').style.display = 'block';
+
+                            // Check if it's the heart stone (index 0)
+                            if (stone.userData.index === 0) {
+                                // Play wedding video for heart stone
+                                playWeddingVideo();
+                            } else {
+                                // Show particle system for other stones
+                                createParticleSystem(stone.userData.color);
+                                document.getElementById('hint').textContent = 'Hold mouse button and keep for 5 seconds';
+                                document.getElementById('hint').style.display = 'block';
+                                document.getElementById('timer').style.display = 'block';
+                            }
                         }, 1500);
                     }, 300);
                 })
@@ -552,6 +603,34 @@
                     document.getElementById('hint').style.display = 'block';
                 }, 500);
             }, 1000);
+
+            // Setup video close button
+            document.getElementById('close-video').addEventListener('click', closeWeddingVideo);
+
+            // Auto close when video ends
+            document.getElementById('video-player').addEventListener('ended', closeWeddingVideo);
+        }
+
+        function playWeddingVideo() {
+            const videoContainer = document.getElementById('wedding-video');
+            const videoPlayer = document.getElementById('video-player');
+
+            videoContainer.style.display = 'block';
+            videoPlayer.currentTime = 0;
+            videoPlayer.play();
+
+            document.getElementById('hint').style.display = 'none';
+        }
+
+        function closeWeddingVideo() {
+            const videoContainer = document.getElementById('wedding-video');
+            const videoPlayer = document.getElementById('video-player');
+
+            videoPlayer.pause();
+            videoContainer.style.display = 'none';
+
+            // Return to beach
+            returnToBeach();
         }
 
         function processMouseInput() {
