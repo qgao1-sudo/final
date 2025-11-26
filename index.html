@@ -229,9 +229,14 @@
         }
 
         function createBeach() {
-            // Sand
+            // Sand with texture image
             const sandGeometry = new THREE.PlaneGeometry(100, 100);
-            const sandTexture = createSandTexture();
+            const textureLoader = new THREE.TextureLoader();
+            const sandTexture = textureLoader.load('360_F_137959206_DfQCGiTlk2YLNR5RYDLIh9VMyZXYkjmn.jpg');
+            sandTexture.wrapS = THREE.RepeatWrapping;
+            sandTexture.wrapT = THREE.RepeatWrapping;
+            sandTexture.repeat.set(10, 10);
+
             const sandMaterial = new THREE.MeshStandardMaterial({
                 map: sandTexture,
                 roughness: 0.9,
@@ -257,30 +262,6 @@
 
             // Sky
             scene.background = new THREE.Color(0x87ceeb);
-        }
-
-        function createSandTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-
-            ctx.fillStyle = '#c2b280';
-            ctx.fillRect(0, 0, 512, 512);
-
-            for (let i = 0; i < 5000; i++) {
-                const x = Math.random() * 512;
-                const y = Math.random() * 512;
-                const shade = Math.random() * 40 - 20;
-                ctx.fillStyle = `rgb(${194 + shade}, ${178 + shade}, ${128 + shade})`;
-                ctx.fillRect(x, y, 2, 2);
-            }
-
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(10, 10);
-            return texture;
         }
 
         function createStones() {
