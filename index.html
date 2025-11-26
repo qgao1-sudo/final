@@ -271,17 +271,45 @@
                 [-5, 0, 5], [-1.5, 0, 6], [2, 0, 5.5], [5, 0, 6], [0, 0, 8]
             ];
 
-            positions.forEach((pos, index) => {
-                const geometry = new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.3, 0);
-                const material = new THREE.MeshStandardMaterial({
-                    color: stoneColors[index],
-                    roughness: 0.7,
-                    metalness: 0.2,
-                    emissive: stoneColors[index],
-                    emissiveIntensity: 0
-                });
+            const textureLoader = new THREE.TextureLoader();
 
-                const stone = new THREE.Mesh(geometry, material);
+            positions.forEach((pos, index) => {
+                let stone;
+
+                if (index === 0) {
+                    // First stone uses the heart texture image
+                    const heartTexture = textureLoader.load('爱心石头1.png');
+
+                    // Create a plane geometry for the image
+                    const geometry = new THREE.PlaneGeometry(1.2, 1.2);
+                    const material = new THREE.MeshStandardMaterial({
+                        map: heartTexture,
+                        transparent: true,
+                        alphaTest: 0.1,
+                        side: THREE.DoubleSide,
+                        color: 0xAAAAAA, // Match the sand brightness
+                        roughness: 0.6,
+                        metalness: 0.1,
+                        emissive: stoneColors[index],
+                        emissiveIntensity: 0
+                    });
+
+                    stone = new THREE.Mesh(geometry, material);
+                    stone.rotation.x = -Math.PI / 2; // Lay flat on ground
+                } else {
+                    // Other stones use geometric shapes
+                    const geometry = new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.3, 0);
+                    const material = new THREE.MeshStandardMaterial({
+                        color: stoneColors[index],
+                        roughness: 0.7,
+                        metalness: 0.2,
+                        emissive: stoneColors[index],
+                        emissiveIntensity: 0
+                    });
+
+                    stone = new THREE.Mesh(geometry, material);
+                }
+
                 stone.position.set(pos[0], pos[1] + 0.5, pos[2]);
                 stone.castShadow = true;
                 stone.receiveShadow = true;
