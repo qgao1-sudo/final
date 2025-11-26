@@ -114,6 +114,9 @@
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
+    <!-- TWEEN.js for camera animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
     <!-- MediaPipe Hands -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -134,6 +137,19 @@
         let expansionTimer = 0;
         let isExpanding = false;
         let targetExpansionTime = 5.0;
+
+        // Hand visualization
+        let virtualHands = { left: null, right: null };
+
+        // Hover detection
+        let hoveredStone = null;
+        let hoverTimer = 0;
+        let hoverDuration = 2.0; // 2 seconds
+
+        // Camera animation
+        let cameraAnimating = false;
+        let originalCameraPosition = { x: 0, y: 5, z: 15 };
+        let originalCameraTarget = { x: 0, y: 0, z: 0 };
 
         // Stone colors
         const stoneColors = [
@@ -185,8 +201,57 @@
 
             createBeach();
             createStones();
+            createVirtualHands();
 
             window.addEventListener('resize', onWindowResize);
+        }
+
+        function createVirtualHands() {
+            // Create left hand
+            const leftHandGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const leftHandMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.4,
+                emissive: 0xffffff,
+                emissiveIntensity: 0.3
+            });
+            virtualHands.left = new THREE.Mesh(leftHandGeometry, leftHandMaterial);
+            virtualHands.left.visible = false;
+            scene.add(virtualHands.left);
+
+            // Create right hand
+            const rightHandGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const rightHandMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.4,
+                emissive: 0xffffff,
+                emissiveIntensity: 0.3
+            });
+            virtualHands.right = new THREE.Mesh(rightHandGeometry, rightHandMaterial);
+            virtualHands.right.visible = false;
+            scene.add(virtualHands.right);
+
+            // Create fingers for each hand (simplified representation)
+            ['left', 'right'].forEach(side => {
+                const hand = virtualHands[side];
+                hand.userData.fingers = [];
+
+                for (let i = 0; i < 5; i++) {
+                    const fingerGeometry = new THREE.CapsuleGeometry(0.05, 0.4, 4, 8);
+                    const fingerMaterial = new THREE.MeshStandardMaterial({
+                        color: 0xffffff,
+                        transparent: true,
+                        opacity: 0.3,
+                        emissive: 0xffffff,
+                        emissiveIntensity: 0.2
+                    });
+                    const finger = new THREE.Mesh(fingerGeometry, fingerMaterial);
+                    hand.add(finger);
+                    hand.userData.fingers.push(finger);
+                }
+            });
         }
 
         function createBeach() {
@@ -342,30 +407,97 @@
 
         function selectStone(stone) {
             selectedStone = stone;
+            cameraAnimating = true;
 
-            // Darken background
-            scene.fog.color.setHex(0x1a1a2e);
-            scene.background.setHex(0x1a1a2e);
+            // Hide virtual hands during selection
+            if (virtualHands.left) virtualHands.left.visible = false;
+            if (virtualHands.right) virtualHands.right.visible = false;
 
-            // Glow effect
-            stone.material.emissiveIntensity = 0.5;
+            // Animate camera to stone
+            const targetPos = {
+                x: stone.position.x,
+                y: stone.position.y + 2,
+                z: stone.position.z + 5
+            };
 
-            // Hide other stones
-            stones.forEach(s => {
-                if (s !== stone) {
-                    s.visible = false;
-                }
-            });
+            const cameraPos = { ...camera.position };
+            const lookAtPos = { x: 0, y: 0, z: 0 };
+            const targetLookAt = { ...stone.position };
 
-            // Transition to story mode
-            setTimeout(() => {
-                currentState = GameState.STORY;
-                stone.visible = false;
-                createParticleSystem(stone.userData.color);
-                document.getElementById('hint').textContent = 'Spread your hands apart and hold for 5 seconds';
-                document.getElementById('hint').style.display = 'block';
-                document.getElementById('timer').style.display = 'block';
-            }, 1000);
+            // Camera position tween
+            new TWEEN.Tween(cameraPos)
+                .to(targetPos, 1500)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .onUpdate(() => {
+                    camera.position.set(cameraPos.x, cameraPos.y, cameraPos.z);
+                })
+                .start();
+
+            // Camera look-at tween
+            new TWEEN.Tween(lookAtPos)
+                .to(targetLookAt, 1500)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .onUpdate(() => {
+                    camera.lookAt(lookAtPos.x, lookAtPos.y, lookAtPos.z);
+                })
+                .onComplete(() => {
+                    cameraAnimating = false;
+
+                    // Start darkening and glow effect
+                    setTimeout(() => {
+                        // Gradually darken background
+                        const bgColor = { r: 0x87 / 255, g: 0xce / 255, b: 0xeb / 255 };
+                        const targetColor = { r: 0x1a / 255, g: 0x1a / 255, b: 0x2e / 255 };
+
+                        new TWEEN.Tween(bgColor)
+                            .to(targetColor, 1000)
+                            .onUpdate(() => {
+                                const color = new THREE.Color(bgColor.r, bgColor.g, bgColor.b);
+                                scene.fog.color.copy(color);
+                                scene.background.copy(color);
+                            })
+                            .start();
+
+                        // Glow effect
+                        const glowIntensity = { value: 0 };
+                        new TWEEN.Tween(glowIntensity)
+                            .to({ value: 1.0 }, 1000)
+                            .onUpdate(() => {
+                                stone.material.emissiveIntensity = glowIntensity.value;
+                            })
+                            .start();
+
+                        // Hide other stones
+                        stones.forEach(s => {
+                            if (s !== stone) {
+                                const opacity = { value: 1 };
+                                new TWEEN.Tween(opacity)
+                                    .to({ value: 0 }, 800)
+                                    .onUpdate(() => {
+                                        s.material.opacity = opacity.value;
+                                        s.material.transparent = true;
+                                    })
+                                    .onComplete(() => {
+                                        s.visible = false;
+                                    })
+                                    .start();
+                            }
+                        });
+
+                        // Transition to story mode
+                        setTimeout(() => {
+                            currentState = GameState.STORY;
+                            stone.visible = false;
+                            createParticleSystem(stone.userData.color);
+                            document.getElementById('hint').textContent = 'Spread your hands apart and hold for 5 seconds';
+                            document.getElementById('hint').style.display = 'block';
+                            document.getElementById('timer').style.display = 'block';
+                        }, 1500);
+                    }, 300);
+                })
+                .start();
+
+            document.getElementById('hint').textContent = 'Entering the stone\'s story...';
         }
 
         function returnToBeach() {
@@ -381,18 +513,51 @@
                 particles = null;
             }
 
-            // Restore scene
-            scene.fog.color.setHex(0x87ceeb);
-            scene.background.setHex(0x87ceeb);
+            // Animate camera back to original position
+            const cameraPos = { ...camera.position };
+            new TWEEN.Tween(cameraPos)
+                .to(originalCameraPosition, 2000)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .onUpdate(() => {
+                    camera.position.set(cameraPos.x, cameraPos.y, cameraPos.z);
+                })
+                .start();
+
+            const lookAtPos = { x: selectedStone.position.x, y: selectedStone.position.y, z: selectedStone.position.z };
+            new TWEEN.Tween(lookAtPos)
+                .to(originalCameraTarget, 2000)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .onUpdate(() => {
+                    camera.lookAt(lookAtPos.x, lookAtPos.y, lookAtPos.z);
+                })
+                .start();
+
+            // Restore scene colors
+            const bgColor = { r: 0x1a / 255, g: 0x1a / 255, b: 0x2e / 255 };
+            const targetColor = { r: 0x87 / 255, g: 0xce / 255, b: 0xeb / 255 };
+
+            new TWEEN.Tween(bgColor)
+                .to(targetColor, 1500)
+                .onUpdate(() => {
+                    const color = new THREE.Color(bgColor.r, bgColor.g, bgColor.b);
+                    scene.fog.color.copy(color);
+                    scene.background.copy(color);
+                })
+                .start();
 
             // Show all stones
             stones.forEach(stone => {
                 stone.visible = true;
                 stone.material.emissiveIntensity = 0;
+                stone.material.opacity = 1;
+                stone.material.transparent = false;
             });
 
             selectedStone = null;
-            document.getElementById('hint').textContent = 'Pinch a stone with your fingers to select it';
+            hoveredStone = null;
+            hoverTimer = 0;
+
+            document.getElementById('hint').textContent = 'Hover your hand over a stone for 2 seconds to select it';
             document.getElementById('timer').style.display = 'none';
         }
 
@@ -430,7 +595,7 @@
                 document.getElementById('instructions').classList.add('fade-out');
                 setTimeout(() => {
                     document.getElementById('instructions').style.display = 'none';
-                    document.getElementById('hint').textContent = 'Pinch a stone with your fingers to select it';
+                    document.getElementById('hint').textContent = 'Hover your hand over a stone for 2 seconds to select it';
                     document.getElementById('hint').style.display = 'block';
                 }, 500);
             }, 2000);
@@ -457,7 +622,77 @@
                     }
                 }
 
+                updateVirtualHands();
                 processHandInput();
+            } else {
+                // Hide virtual hands when no hands detected
+                if (virtualHands.left) virtualHands.left.visible = false;
+                if (virtualHands.right) virtualHands.right.visible = false;
+            }
+        }
+
+        function updateVirtualHands() {
+            // Update left hand
+            if (handData.left && virtualHands.left && currentState === GameState.BEACH) {
+                const landmarks = handData.left.landmarks;
+                const palmPos = landmarks[9]; // Middle finger base
+
+                // Convert normalized coordinates to 3D world space
+                const worldX = (palmPos.x - 0.5) * 30;
+                const worldY = -(palmPos.y - 0.5) * 15 + 3;
+                const worldZ = (palmPos.y - 0.5) * -20 + 5;
+
+                virtualHands.left.position.set(worldX, worldY, worldZ);
+                virtualHands.left.visible = true;
+
+                // Update finger positions
+                const fingerIndices = [4, 8, 12, 16, 20]; // Thumb, Index, Middle, Ring, Pinky tips
+                fingerIndices.forEach((tipIndex, i) => {
+                    const tip = landmarks[tipIndex];
+                    const base = landmarks[tipIndex - 3] || palmPos;
+
+                    const finger = virtualHands.left.userData.fingers[i];
+                    const dx = (tip.x - base.x) * 10;
+                    const dy = -(tip.y - base.y) * 10;
+                    const dz = (tip.z - base.z) * 10;
+
+                    const angle = Math.atan2(dy, dx);
+                    finger.rotation.z = angle;
+                    finger.position.set(dx * 0.3, dy * 0.3, dz * 0.3);
+                });
+            } else if (virtualHands.left) {
+                virtualHands.left.visible = false;
+            }
+
+            // Update right hand
+            if (handData.right && virtualHands.right && currentState === GameState.BEACH) {
+                const landmarks = handData.right.landmarks;
+                const palmPos = landmarks[9];
+
+                const worldX = (palmPos.x - 0.5) * 30;
+                const worldY = -(palmPos.y - 0.5) * 15 + 3;
+                const worldZ = (palmPos.y - 0.5) * -20 + 5;
+
+                virtualHands.right.position.set(worldX, worldY, worldZ);
+                virtualHands.right.visible = true;
+
+                // Update finger positions
+                const fingerIndices = [4, 8, 12, 16, 20];
+                fingerIndices.forEach((tipIndex, i) => {
+                    const tip = landmarks[tipIndex];
+                    const base = landmarks[tipIndex - 3] || palmPos;
+
+                    const finger = virtualHands.right.userData.fingers[i];
+                    const dx = (tip.x - base.x) * 10;
+                    const dy = -(tip.y - base.y) * 10;
+                    const dz = (tip.z - base.z) * 10;
+
+                    const angle = Math.atan2(dy, dx);
+                    finger.rotation.z = angle;
+                    finger.position.set(dx * 0.3, dy * 0.3, dz * 0.3);
+                });
+            } else if (virtualHands.right) {
+                virtualHands.right.visible = false;
             }
         }
 
@@ -488,43 +723,65 @@
 
         function processHandInput() {
             if (currentState === GameState.BEACH) {
-                // Check for pinch to select stone
-                if (handData.left && handData.left.pinching && !selectedStone) {
-                    const handPos = handData.left.position;
+                // Check hover detection for stone selection (2 seconds)
+                if ((handData.left || handData.right) && !selectedStone) {
+                    const handPos = handData.left ? handData.left.position : handData.right.position;
                     const handX = (handPos.x - 0.5) * 30;
+                    const handY = -(handPos.y - 0.5) * 15 + 3;
                     const handZ = (handPos.y - 0.5) * -20 + 5;
+
+                    let currentHoveredStone = null;
 
                     stones.forEach(stone => {
                         const distance = Math.sqrt(
                             Math.pow(stone.position.x - handX, 2) +
+                            Math.pow(stone.position.y - handY, 2) +
                             Math.pow(stone.position.z - handZ, 2)
                         );
 
-                        if (distance < 2) {
-                            selectStone(stone);
-                        }
-                    });
-                }
-
-                // Hover effect
-                if (handData.left && !selectedStone) {
-                    const handPos = handData.left.position;
-                    const handX = (handPos.x - 0.5) * 30;
-                    const handZ = (handPos.y - 0.5) * -20 + 5;
-
-                    stones.forEach(stone => {
-                        const distance = Math.sqrt(
-                            Math.pow(stone.position.x - handX, 2) +
-                            Math.pow(stone.position.z - handZ, 2)
-                        );
-
-                        if (distance < 2) {
-                            stone.material.emissiveIntensity = 0.3;
+                        if (distance < 1.5) {
+                            currentHoveredStone = stone;
+                            stone.material.emissiveIntensity = 0.3 + (hoverTimer / hoverDuration) * 0.4;
                             stone.position.y = stone.userData.originalY + Math.sin(Date.now() * 0.003) * 0.1;
                         } else {
                             stone.material.emissiveIntensity = 0;
                             stone.position.y = stone.userData.originalY;
                         }
+                    });
+
+                    // Update hover timer
+                    if (currentHoveredStone) {
+                        if (hoveredStone === currentHoveredStone) {
+                            hoverTimer += 1/60; // Increment by frame time (assuming 60 FPS)
+
+                            // Update hint with progress
+                            const remaining = Math.max(0, hoverDuration - hoverTimer);
+                            document.getElementById('hint').textContent =
+                                `Hold for ${remaining.toFixed(1)}s to select this stone`;
+
+                            if (hoverTimer >= hoverDuration) {
+                                selectStone(currentHoveredStone);
+                                hoverTimer = 0;
+                            }
+                        } else {
+                            // Different stone, reset timer
+                            hoveredStone = currentHoveredStone;
+                            hoverTimer = 0;
+                        }
+                    } else {
+                        // No stone hovered, reset
+                        hoveredStone = null;
+                        hoverTimer = 0;
+                        document.getElementById('hint').textContent =
+                            'Hover your hand over a stone for 2 seconds to select it';
+                    }
+                } else {
+                    // No hand detected, reset hover
+                    hoveredStone = null;
+                    hoverTimer = 0;
+                    stones.forEach(stone => {
+                        stone.material.emissiveIntensity = 0;
+                        stone.position.y = stone.userData.originalY;
                     });
                 }
             } else if (currentState === GameState.STORY) {
@@ -565,6 +822,9 @@
 
         function animate() {
             requestAnimationFrame(animate);
+
+            // Update TWEEN animations
+            TWEEN.update();
 
             // Animate stones when not selected
             if (currentState === GameState.BEACH) {
